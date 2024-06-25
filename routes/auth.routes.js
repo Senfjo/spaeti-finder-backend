@@ -4,6 +4,12 @@ const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { isAuthenticated } = require("../middleware/jwt.middleware");
 
+
+// Checks password: at least 1 capital letter, 1 lowercase letter, 1 digit, no whitespace and a length of 8 characters
+function isValidPassword(pw) {
+    return pw.match(/^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?!.* ).{8,}$/g);
+}
+
 router.post("/signup", async (req, res) => {
   try {
     const foundEmail = await User.findOne({
@@ -15,6 +21,7 @@ router.post("/signup", async (req, res) => {
     if (foundEmail && foundUsername) throw "email and username already exist";
     else if (foundEmail) throw "email already exists";
     else if (foundUsername) throw "username already exists";
+    else if (!isValidPassword(req.body.password)) throw "invalid password"
 
     const salt = bcryptjs.genSaltSync(10);
     const hashedPassword = bcryptjs.hashSync(req.body.password, salt);
