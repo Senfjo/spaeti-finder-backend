@@ -19,19 +19,28 @@ const spaetiSchema = new Schema({
   },
   rating: {
     type: [Schema.Types.ObjectId],
-    ref: "Rating",
+    ref: "rating",
   },
-  sterni:{
+  sterni: {
     type: Number,
-  },
-  TrackEvent: {
-    type: Boolean,
   },
   seats: {
     type: Boolean,
   },
   wc: {
     type: Boolean,
+  },
+  creator: {
+    type: Schema.Types.ObjectId,
+    ref: "creator",
+  },
+  approved: {
+    type: Boolean,
+  },
+  image: {
+    type: String,
+    default:
+      "https://www.seo-freundlich.de/wp-content/uploads/SEO-fuer-Spaetkauf-Kiosk.jpg",
   },
 });
 
