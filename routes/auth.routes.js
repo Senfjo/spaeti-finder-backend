@@ -76,7 +76,8 @@ router.post("/login", async (req, res) => {
 
 router.get("/verify", isAuthenticated, (req, res) => {
   if (req.payload) {
-    res.status(200).json({ message: "Valid token", user: req.payload });
+    console.log("payload in verify", req.payload)
+    res.status(200).json({ message: "Valid token", user: {...req.payload, admin:false} });
   } else {
     res.status(401).json({ errorMessage: "Invalid token" });
   }

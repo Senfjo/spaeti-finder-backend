@@ -25,7 +25,6 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const findSpaeti = await Spaeti.findById(id).populate("creator").populate("rating").lean();
-    console.log(findSpaeti)
     if (findSpaeti && findSpaeti.creator) {
       const keysToDelete = ["password", "email"]; 
       keysToDelete.forEach(key => {

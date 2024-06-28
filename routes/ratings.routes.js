@@ -1,23 +1,29 @@
 const router = require("express").Router();
 const Rating = require("../models/Rating.model");
-
+const Spaeti = require("../models/Spaeti.model");
 
 router.post("", async (req, res) => {
   try {
     const createRating = await Rating.create(req.body);
     res.status(201).json({ message: "created rating", data: createRating });
+    console.log("this is createRating:", createRating._id);
+
+    const updateSpaeti = await Spaeti.findByIdAndUpdate(
+      createRating.spaeti,
+      { $push: { rating: createRating._id } },
+      { new: true }
+    );
   } catch (error) {
-    res.status(500).json(error);
+    res.status(500).json({ errorMessage: error });
   }
 });
 
 router.get("", async (req, res) => {
   try {
-    const allRatings = await Rating.find().populate("user").lean()
-    console.log("all ratings get route", allRatings[0].user)
+    const allRatings = await Rating.find().populate("user").lean();
 
     if (allRatings) {
-      const keysToDelete = ["password", "email"]; 
+      const keysToDelete = ["password", "email"];
       keysToDelete.forEach((key, index) => {
         delete allRatings[index].user[key];
       });
@@ -45,7 +51,7 @@ router.put("/update/:id", async (req, res) => {
     const updateRating = await Rating.findByIdAndUpdate(id, req.body, {
       new: true,
     });
-    res.status(201).json({message: "updated rating", data: updateRating })
+    res.status(201).json({ message: "updated rating", data: updateRating });
   } catch (error) {
     res.status(500).json(error);
   }
@@ -60,6 +66,5 @@ router.delete("/delete/:id", async (req, res) => {
     res.status(500).json(error);
   }
 });
-
 
 module.exports = router;

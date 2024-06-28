@@ -34,6 +34,9 @@ const userSchema = new Schema(
     likes: {
       type: [Schema.Types.ObjectId],
       ref: "Likes",
+    },
+    admin: {type: Boolean,
+      default: false
     }
   },
   {
