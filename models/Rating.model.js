@@ -4,7 +4,7 @@ const ratingSchema = new Schema({
   user: {
     type: Schema.Types.ObjectId,
     required: true,
-    ref: "user",
+    ref: "User",
   },
   stars: {
     type: Number,
@@ -13,16 +13,21 @@ const ratingSchema = new Schema({
   comment: {
     type: String,
   },
-  img: {
-    type: String,
-  },
   likes: {
     type: [Schema.Types.ObjectId],
-    ref: "likes",
+    ref: "User",
   },
-  date: { 
-    type: Date, 
-    default: Date.now 
+  dislikes: {
+    type: [Schema.Types.ObjectId],
+    ref: "User",
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+  spaeti: {
+    type: Schema.Types.ObjectId,
+    ref: "Spaeti",
   },
 });
 

@@ -13,7 +13,16 @@ router.post("", async (req, res) => {
 
 router.get("", async (req, res) => {
   try {
-    const allRatings = await Rating.find();
+    const allRatings = await Rating.find().populate("user").lean()
+    console.log("all ratings get route", allRatings[0].user)
+
+    if (allRatings) {
+      const keysToDelete = ["password", "email"]; 
+      keysToDelete.forEach((key, index) => {
+        delete allRatings[index].user[key];
+      });
+    }
+
     res.status(200).json({ message: "found all ratings", data: allRatings });
   } catch (error) {
     res.status(500).json(error);

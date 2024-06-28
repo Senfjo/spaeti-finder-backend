@@ -1,9 +1,9 @@
 const router = require("express").Router();
 const Spaeti = require("../models/Spaeti.model");
 const uploader = require("../middleware/cloudinary.config");
+const { raw } = require("express");
 
 router.post("", uploader.single("image"), async (req, res) => {
-  
   try {
     const createSpaeti = await Spaeti.create(req.body);
     res.status(201).json({ message: "created spaeti", data: createSpaeti });
@@ -24,7 +24,15 @@ router.get("", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const findSpaeti = await Spaeti.findById(id);
+    const findSpaeti = await Spaeti.findById(id).populate("creator").populate("rating").lean();
+    console.log(findSpaeti)
+    if (findSpaeti && findSpaeti.creator) {
+      const keysToDelete = ["password", "email"]; 
+      keysToDelete.forEach(key => {
+        delete findSpaeti.creator[key];
+      });
+    }
+
     res.status(200).json({ message: "found spaeti", data: findSpaeti });
   } catch (error) {
     res.status(500).json(error);
@@ -34,7 +42,7 @@ router.get("/:id", async (req, res) => {
 router.patch("/update/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const updateSpaeti = await Spaeti.findByIdAndUpdate(id);
+    const updateSpaeti = await Spaeti.findByIdAndUpdate(id, req.body, {new: true});
     res.status(201).json({ message: "updated spaeti", data: updateSpaeti });
   } catch (error) {
     res.status(500).json(error);

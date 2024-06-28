@@ -29,11 +29,11 @@ const userSchema = new Schema(
     },
     ratings: {
       type: [Schema.Types.ObjectId],
-      ref: "ratings",
+      ref: "Ratings",
     },
     likes: {
       type: [Schema.Types.ObjectId],
-      ref: "likes",
+      ref: "Likes",
     }
   },
   {

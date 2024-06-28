@@ -19,7 +19,7 @@ const spaetiSchema = new Schema({
   },
   rating: {
     type: [Schema.Types.ObjectId],
-    ref: "rating",
+    ref: "Rating",
   },
   sterni: {
     type: Number,
@@ -32,7 +32,7 @@ const spaetiSchema = new Schema({
   },
   creator: {
     type: Schema.Types.ObjectId,
-    ref: "creator",
+    ref: "User",
   },
   approved: {
     type: Boolean,
