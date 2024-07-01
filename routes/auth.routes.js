@@ -48,7 +48,7 @@ router.post("/signup", uploader.single("image"), async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const foundUser = await User.findOne({
-      email: req.body.email,
+      username: req.body.username,
     });
     if (foundUser) {
       const passwordMatch = bcryptjs.compareSync(
@@ -76,8 +76,10 @@ router.post("/login", async (req, res) => {
 
 router.get("/verify", isAuthenticated, (req, res) => {
   if (req.payload) {
-    console.log("payload in verify", req.payload)
-    res.status(200).json({ message: "Valid token", user: {...req.payload, admin:false} });
+    console.log("payload in verify", req.payload);
+    res
+      .status(200)
+      .json({ message: "Valid token", user: { ...req.payload, admin: false } });
   } else {
     res.status(401).json({ errorMessage: "Invalid token" });
   }
