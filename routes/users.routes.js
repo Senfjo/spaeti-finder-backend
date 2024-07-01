@@ -1,10 +1,16 @@
 const router = require("express").Router();
 const User = require("../models/User.model");
 
-
 router.post("", async (req, res) => {
   try {
     const createUser = await User.create(req.body);
+    console.log(createUser);
+    if (createUser) {
+      const keysToDelete = ["password", "email"];
+      keysToDelete.forEach((key) => {
+        delete createUser[key];
+      });
+    }
     res.status(201).json({ message: "created user", data: createUser });
   } catch (error) {
     res.status(500).json(error);
@@ -36,7 +42,7 @@ router.put("/update/:id", async (req, res) => {
     const updateUser = await User.findByIdAndUpdate(id, req.body, {
       new: true,
     });
-    res.status(201).json({message: "updated user", data: updateUser})
+    res.status(201).json({ message: "updated user", data: updateUser });
   } catch (error) {
     res.status(500).json(error);
   }
@@ -51,6 +57,5 @@ router.delete("/delete/:id", async (req, res) => {
     res.status(500).json(error);
   }
 });
-
 
 module.exports = router;

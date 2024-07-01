@@ -38,7 +38,7 @@ router.post("/signup", uploader.single("image"), async (req, res) => {
       password: hashedPassword,
       image: userImage,
     });
-    res.status(201).json({ message: "Created new user", newUser });
+    res.status(201).json({ message: "Created new user" });
   } catch (error) {
     console.log(error);
     res.status(500).json({ errorMessage: error });
