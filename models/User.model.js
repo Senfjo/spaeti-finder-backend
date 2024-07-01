@@ -1,6 +1,5 @@
 const { Schema, model } = require("mongoose");
 
-// TODO: Please make sure you edit the User model to whatever makes sense in this case
 const userSchema = new Schema(
   {
     email: {
@@ -29,15 +28,17 @@ const userSchema = new Schema(
     },
     ratings: {
       type: [Schema.Types.ObjectId],
-      ref: "Ratings",
+      ref: "Rating",
     },
     likes: {
       type: [Schema.Types.ObjectId],
-      ref: "Likes",
+      ref: "Rating",
     },
-    admin: {type: Boolean,
-      default: false
-    }
+    dislikes: {
+      type: [Schema.Types.ObjectId],
+      ref: "Rating",
+    },
+    admin: { type: Boolean, default: false },
   },
   {
     // this second object adds extra properties: `createdAt` and `updatedAt`
