@@ -67,6 +67,21 @@ router.put("/update/:id", async (req, res) => {
   }
 });
 
+router.put("/like/:id", async (req, res)=>{
+  const {id} = req.params;
+
+  try {
+    const addLike = await Rating.findByIdAndUpdate(id, { $push: { likes: req.body.user } },
+      { new: true })
+      console.log(req.body)
+      console.log("add like route",addLike)
+      res.status(201).json({message: "Successfully updated", addLike})
+  } catch (error) {
+    console.log(error)
+    res.status(500).json(error)
+  }
+})
+
 router.delete("/delete/:id", async (req, res) => {
   const { id } = req.params;
   try {
