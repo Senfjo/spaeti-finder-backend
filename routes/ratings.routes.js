@@ -67,7 +67,7 @@ router.put("/update/:id", async (req, res) => {
   }
 });
 
-router.put("/like/:id", async (req, res)=>{
+router.put("/add-like/:id", async (req, res)=>{
   const {id} = req.params;
 
   try {
@@ -76,6 +76,21 @@ router.put("/like/:id", async (req, res)=>{
       console.log(req.body)
       console.log("add like route",addLike)
       res.status(201).json({message: "Successfully updated", addLike})
+  } catch (error) {
+    console.log(error)
+    res.status(500).json(error)
+  }
+})
+
+router.put("/remove-like/:id", async (req, res)=>{
+  const {id} = req.params;
+
+  try {
+    const removeLike = await Rating.findByIdAndUpdate(id, { $pull: { likes: req.body.user } },
+      { new: true })
+      console.log(req.body)
+      console.log("remove like route",removeLike)
+      res.status(201).json({message: "Successfully updated", removeLike})
   } catch (error) {
     console.log(error)
     res.status(500).json(error)

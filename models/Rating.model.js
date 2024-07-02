@@ -17,10 +17,6 @@ const ratingSchema = new Schema({
     type: [Schema.Types.ObjectId],
     ref: "User",
   },
-  dislikes: {
-    type: [Schema.Types.ObjectId],
-    ref: "User",
-  },
   date: {
     type: Date,
     default: Date.now,
