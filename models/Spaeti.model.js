@@ -40,7 +40,7 @@ const spaetiSchema = new Schema({
   image: {
     type: String,
     default:
-      "https://www.seo-freundlich.de/wp-content/uploads/SEO-fuer-Spaetkauf-Kiosk.jpg",
+      "https://www.berlin-live.de/wp-content/uploads/sites/10/2024/03/imago0105469791h-e1710357404842.jpg",
   },
 });
 

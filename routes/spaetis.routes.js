@@ -13,8 +13,10 @@ router.post("", uploader.single("image"), async (req, res) => {
 
 router.get("", async (req, res) => {
   try {
-    const allSpaetis = await Spaeti.find();
+    const allSpaetis = await Spaeti.find().lean().populate({path:"rating"})
+    console.log(allSpaetis)
     res.status(200).json({ message: "all speatis:", data: allSpaetis });
+  
   } catch (error) {
     res.status(500).json(error);
   }
