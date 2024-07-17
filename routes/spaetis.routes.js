@@ -4,8 +4,23 @@ const uploader = require("../middleware/cloudinary.config");
 
 router.post("", uploader.single("image"), async (req, res) => {
   try {
-    const createSpaeti = await Spaeti.create(req.body);
-    res.status(201).json({ message: "created spaeti", data: createSpaeti });
+    const { name, street, zip, city, lat, lng, rating, sterni, seats, wc, creator, approved, image } = req.body;
+    const newSpaeti = await Spaeti.create({
+      name,
+      street,
+      zip,
+      city,
+      lat,
+      lng,
+      rating,
+      sterni,
+      seats,
+      wc,
+      creator,
+      approved,
+      image
+    });
+    res.status(201).json({ message: "created spaeti", data: newSpaeti });
   } catch (error) {
     res.status(500).json(error);
   }
