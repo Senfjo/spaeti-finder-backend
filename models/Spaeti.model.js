@@ -17,6 +17,12 @@ const spaetiSchema = new Schema({
     type: String,
     required: true,
   },
+  lat: {
+    type: Number,
+  },
+  lng: {
+    type: Number,
+  },
   rating: {
     type: [Schema.Types.ObjectId],
     ref: "Rating",

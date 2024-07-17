@@ -59,6 +59,7 @@ router.post("/login", async (req, res) => {
         const loggedInUser = {
           _id: foundUser._id,
           user: foundUser.username,
+          admin: foundUser.admin
         };
         const authToken = jwt.sign(loggedInUser, process.env.TOKEN_SECRET, {
           algorithm: "HS256",
@@ -79,7 +80,7 @@ router.get("/verify", isAuthenticated, (req, res) => {
     console.log("payload in verify", req.payload);
     res
       .status(200)
-      .json({ message: "Valid token", user: { ...req.payload, admin: false } });
+      .json({ message: "Valid token", user: req.payload  });
   } else {
     res.status(401).json({ errorMessage: "Invalid token" });
   }
