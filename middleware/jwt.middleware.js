@@ -6,8 +6,7 @@ const isAuthenticated = (req, res, next) => {
     const token = req.headers.authorization.split(" ")[1];
     const payload = jwt.verify(token, process.env.TOKEN_SECRET);
     req.payload = payload;
-    console.log("this is the payload", req.payload)
-
+    console.log("req payload in authenticated:", req.payload);
     next();
   } catch (error) {
     console.log(error);
@@ -15,6 +14,23 @@ const isAuthenticated = (req, res, next) => {
   }
 };
 
+const isAdmin = (req, res, next) => {
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const payload = jwt.verify(token, process.env.TOKEN_SECRET);
+
+    if (payload.admin) {
+      next();
+    } else {
+      res.status(403).json({ message: "Forbidden" });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(401).json("no access to this page");
+  }
+};
+
 module.exports = {
   isAuthenticated,
+  isAdmin,
 };

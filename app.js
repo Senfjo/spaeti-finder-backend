@@ -22,12 +22,14 @@ const usersRoutes = require("./routes/users.routes");
 const spaetisRoutes = require("./routes/spaetis.routes");
 const ratingsRoutes = require("./routes/ratings.routes");
 const authRoutes = require("./routes/auth.routes");
+const ticketRoutes = require("./routes/ticket.routes")
 
 app.use("/api", indexRoutes);
 app.use("/users", usersRoutes);
 app.use("/spaetis", spaetisRoutes);
 app.use("/ratings", ratingsRoutes);
 app.use("/auth", authRoutes);
+app.use("/tickets", ticketRoutes)
 
 // ❗ To handle errors. Routes that don't exist or errors that you handle in specific routes
 require("./error-handling")(app);
