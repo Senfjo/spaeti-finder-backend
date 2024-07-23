@@ -5,13 +5,18 @@ require("dotenv").config();
 // ℹ️ Connects to the database
 require("./db");
 
+
+
 // Handles http requests (express is node js framework)
 // https://www.npmjs.com/package/express
 const express = require("express");
 
 const app = express();
 
-const { isAuthenticated } = require("./middleware/jwt.middleware");
+// Updating size of for requests
+const bodyParser = require('body-parser');
+app.use(bodyParser.json({ limit: '1mb' }));
+app.use(bodyParser.urlencoded({ limit: '1mb', extended: true }));
 
 // ℹ️ This function is getting exported from the config folder. It runs most pieces of middleware
 require("./config")(app);
