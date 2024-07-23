@@ -20,7 +20,17 @@ router.post('', isAuthenticated, async (req, res) => {
 
 router.get('', isAdmin, async (req, res) => {
   try {
-    const tickets = await Ticket.find({ status: 'pending' }).populate('userId spaetiId');
+    const tickets = await Ticket.find({ status: 'pending' }).populate('userId spaetiId').lean();
+
+    tickets.forEach((ticket)=>{
+       delete ticket.userId.email
+       delete ticket.userId.password
+       delete ticket.userId.admin
+
+    })
+
+
+
     res.status(200).json({ message: 'Pending tickets', data: tickets });
   } catch (error) {
     res.status(500).json({ error: error.message });
