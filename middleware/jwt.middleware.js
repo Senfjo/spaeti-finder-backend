@@ -6,7 +6,6 @@ const isAuthenticated = (req, res, next) => {
     const token = req.headers.authorization.split(" ")[1];
     const payload = jwt.verify(token, process.env.TOKEN_SECRET);
     req.payload = payload;
-    console.log("req payload in authenticated:", req.payload);
     next();
   } catch (error) {
     console.log(error);

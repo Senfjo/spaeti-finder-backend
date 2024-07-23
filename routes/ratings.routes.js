@@ -7,7 +7,6 @@ router.post("", async (req, res) => {
   try {
     const createRating = await Rating.create(req.body);
     res.status(201).json({ message: "created rating", data: createRating });
-    console.log("this is createRating:", createRating._id);
 
     const updateSpaeti = await Spaeti.findByIdAndUpdate(
       createRating.spaeti,
@@ -28,7 +27,6 @@ router.post("", async (req, res) => {
 router.get("", async (req, res) => {
   try {
     const allRatings = await Rating.find().populate("user").lean();
-    console.log(allRatings);
 
     if (allRatings) {
       const keysToDelete = ["password", "email"];
@@ -73,8 +71,6 @@ router.put("/add-like/:id", async (req, res)=>{
   try {
     const addLike = await Rating.findByIdAndUpdate(id, { $push: { likes: req.body.user } },
       { new: true })
-      console.log(req.body)
-      console.log("add like route",addLike)
       res.status(201).json({message: "Successfully updated", addLike})
   } catch (error) {
     console.log(error)
@@ -88,8 +84,6 @@ router.put("/remove-like/:id", async (req, res)=>{
   try {
     const removeLike = await Rating.findByIdAndUpdate(id, { $pull: { likes: req.body.user } },
       { new: true })
-      console.log(req.body)
-      console.log("remove like route",removeLike)
       res.status(201).json({message: "Successfully updated", removeLike})
   } catch (error) {
     console.log(error)

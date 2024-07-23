@@ -5,7 +5,6 @@ const keysToDelete = ["password", "email"];
 router.post("", async (req, res) => {
   try {
     const createUser = await User.create(req.body);
-    console.log(createUser);
     if (createUser) {
       keysToDelete.forEach((key) => {
         delete createUser[key];
@@ -20,7 +19,6 @@ router.post("", async (req, res) => {
 router.get("", async (req, res) => {
   try {
     const allUsers = await User.find().lean();
-    console.log(allUsers);
     if (allUsers) {
       allUsers.forEach((user) => {
         keysToDelete.forEach((key) => {
@@ -38,7 +36,6 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const findUser = await User.findById(id).lean();
-    console.log(findUser);
     if (findUser) {
       keysToDelete.forEach((key) => {
         delete findUser[key];

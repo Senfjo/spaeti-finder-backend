@@ -6,7 +6,6 @@ const { isAuthenticated, isAdmin } = require("../middleware/jwt.middleware");
 router.post("", isAuthenticated, async (req, res) => {
   try {
     const { spaetiId, changes } = req.body;
-    console.log("req body in ticket route", req.body);
     const ticket = await Ticket.create({
       spaetiId,
       changes,
