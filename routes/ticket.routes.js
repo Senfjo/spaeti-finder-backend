@@ -47,13 +47,25 @@ router.post("/:id/approve", isAdmin, async (req, res) => {
       return res.status(404).json({ error: "Späti not found" });
     }
 
-    Object.assign(spaeti, ticket.changes);
-    await spaeti.save();
-    ticket.status = "approved";
-    await ticket.save();
+    // Log initial states
+    console.log("Initial Späti:", spaeti);
+    console.log("Ticket changes:", ticket.changes);
 
-    res.status(200).json({ message: "Ticket approved", data: ticket });
+    // Update the Späti with changes from the ticket
+    for (const [key, value] of ticket.changes.entries()) {
+      spaeti[key] = value;
+    }
+
+    const updatedSpaeti = await spaeti.save(); // Save the updated Späti
+    console.log("Updated Späti:", updatedSpaeti);
+
+    ticket.status = "approved";
+    const updatedTicket = await ticket.save(); // Save the updated ticket
+    console.log("Updated Ticket:", updatedTicket);
+
+    res.status(200).json({ message: "Ticket approved and Späti updated", data: updatedTicket });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -66,9 +78,10 @@ router.post("/:id/reject", isAdmin, async (req, res) => {
     }
 
     ticket.status = "rejected";
-    await ticket.save();
-    res.status(200).json({ message: "Ticket rejected", data: ticket });
+    const updatedTicket = await ticket.save();
+    res.status(200).json({ message: "Ticket rejected", data: updatedTicket });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
