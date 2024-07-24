@@ -101,4 +101,31 @@ router.delete("/delete/:id", async (req, res) => {
   }
 });
 
+router.get("/user/:userId", async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findById(userId)
+      .populate({
+        path: "ratings",
+        populate: {
+          path: "spaeti"
+        }
+      })
+      .lean();
+
+    if (user && user.ratings) {
+      const keysToDelete = ["password", "email"];
+      keysToDelete.forEach((key) => {
+        delete user[key];
+      });
+      res.status(200).json({ message: "found user ratings", data: user.ratings });
+    } else {
+      res.status(404).json({ message: "User or ratings not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ errorMessage: "Error fetching user ratings" });
+  }
+});
+
+
 module.exports = router;
