@@ -48,6 +48,12 @@ const spaetiSchema = new Schema({
     default:
       "https://www.berlin-live.de/wp-content/uploads/sites/10/2024/03/imago0105469791h-e1710357404842.jpg",
   },
+  atm: {
+    type: Boolean,
+  },
+  card: {
+    type: Boolean,
+  },
 });
 
 const Spaeti = model("Spaeti", spaetiSchema);

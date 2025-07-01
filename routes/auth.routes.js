@@ -25,7 +25,7 @@ router.post("/signup", uploader.single("image"), async (req, res) => {
     const foundUsername = await User.findOne({
       username: req.body.username,
     });
-    if (foundEmail && foundUsername) throw "email and username already exist";
+    if (foundEmail && foundUsername) throw "email and/or username already exist";
     else if (foundEmail) throw "email already exists";
     else if (foundUsername) throw "username already exists";
     // else if (!isValidPassword(req.body.password)) throw "invalid password";
