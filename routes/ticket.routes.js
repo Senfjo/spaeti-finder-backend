@@ -1,9 +1,12 @@
+// routes/ticket.routes.js
+
 const router = require("express").Router();
 const Ticket = require("../models/Ticket.model");
 const Spaeti = require("../models/Spaeti.model");
 const { isAuthenticated, isAdmin } = require("../middleware/jwt.middleware");
 
-router.post("", isAuthenticated, async (req, res) => {
+// ─── Create a new ticket ───────────────────────────────────────────────────────
+router.post("/", isAuthenticated, async (req, res) => {
   try {
     const { spaetiId, changes } = req.body;
     const ticket = await Ticket.create({
@@ -17,7 +20,8 @@ router.post("", isAuthenticated, async (req, res) => {
   }
 });
 
-router.get("", isAdmin, async (req, res) => {
+// ─── List pending tickets ───────────────────────────────────────────────────────
+router.get("/", isAdmin, async (req, res) => {
   try {
     const tickets = await Ticket.find({ status: "pending" })
       .populate("userId spaetiId")
@@ -35,47 +39,54 @@ router.get("", isAdmin, async (req, res) => {
   }
 });
 
+// ─── Approve a ticket ──────────────────────────────────────────────────────────
 router.post("/:id/approve", isAdmin, async (req, res) => {
   try {
     const ticket = await Ticket.findById(req.params.id);
-    if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
-    }
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
     const spaeti = await Spaeti.findById(ticket.spaetiId);
-    if (!spaeti) {
-      return res.status(404).json({ error: "Späti not found" });
+    if (!spaeti) return res.status(404).json({ error: "Späti not found" });
+
+    // 1) Parse the proposedSterni (might come in as a string)
+    const raw = ticket.changes.get("proposedSterni");
+    const proposed = raw != null ? parseFloat(raw) : NaN;
+
+    if (!isNaN(proposed)) {
+      // ensure history array exists
+      spaeti.sterniHistory = spaeti.sterniHistory || [];
+      spaeti.sterniHistory.push(proposed);
+
+      // recompute average
+      const sum = spaeti.sterniHistory.reduce((a, b) => a + b, 0);
+      spaeti.sternAvg = +(sum / spaeti.sterniHistory.length).toFixed(2);
     }
 
-    // Log initial states
-    console.log("Initial Späti:", spaeti);
-    console.log("Ticket changes:", ticket.changes);
-
-    // Update the Späti with changes from the ticket
+    // 2) Apply any other field changes
     for (const [key, value] of ticket.changes.entries()) {
+      if (key === "proposedSterni") continue;
       spaeti[key] = value;
     }
 
-    const updatedSpaeti = await spaeti.save(); // Save the updated Späti
-    console.log("Updated Späti:", updatedSpaeti);
-
+    // 3) Save updated Späti and mark ticket approved
+    await spaeti.save();
     ticket.status = "approved";
-    const updatedTicket = await ticket.save(); // Save the updated ticket
-    console.log("Updated Ticket:", updatedTicket);
+    await ticket.save();
 
-    res.status(200).json({ message: "Ticket approved and Späti updated", data: updatedTicket });
+    res
+      .status(200)
+      .json({ message: "Ticket approved and Späti updated", data: spaeti });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// ─── Reject a ticket ───────────────────────────────────────────────────────────
 router.post("/:id/reject", isAdmin, async (req, res) => {
   try {
     const ticket = await Ticket.findById(req.params.id);
-    if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
-    }
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
     ticket.status = "rejected";
     const updatedTicket = await ticket.save();

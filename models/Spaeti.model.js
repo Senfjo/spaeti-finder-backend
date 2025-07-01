@@ -27,8 +27,16 @@ const spaetiSchema = new Schema({
     type: [Schema.Types.ObjectId],
     ref: "Rating",
   },
-  sterni: {
+  // sterni: {
+  //   type: Number,
+  // },
+  sterniHistory: { 
+    type: [Number], 
+    default: [] 
+  },
+  sternAvg: {
     type: Number,
+    default: 0
   },
   seats: {
     type: Boolean,
