@@ -1,88 +1,98 @@
+// routes/auth.routes.js
 const router = require("express").Router();
 const User = require("../models/User.model");
 const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { isAuthenticated } = require("../middleware/jwt.middleware");
 
-// Checks password: at least 1 capital letter, 1 lowercase letter, 1 digit, no whitespace and a length of 8 characters
+// Helper to validate password (not used here, but you can re-enable)
 function isValidPassword(pw) {
   return true;
-  // pw.match(/^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?!.* ).{8,}$/g);
+  // return /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?!.* ).{8,}$/.test(pw);
 }
 
-const uploader = require("../middleware/cloudinary.config");
-
-router.post("/signup", uploader.single("image"), async (req, res) => {
-  let userImage;
-  if (req.file) {
-    userImage = req.file.path;
-  }
-
+// ─── SIGNUP ────────────────────────────────────────────────────────────────────
+router.post("/signup", async (req, res) => {
   try {
-    const foundEmail = await User.findOne({
-      email: req.body.email,
-    });
-    const foundUsername = await User.findOne({
-      username: req.body.username,
-    });
-    if (foundEmail && foundUsername) throw "email and/or username already exist";
-    else if (foundEmail) throw "email already exists";
-    else if (foundUsername) throw "username already exists";
-    // else if (!isValidPassword(req.body.password)) throw "invalid password";
+    const { username, email, password, image } = req.body;
 
+    // 1) Check for duplicates
+    const foundEmail    = await User.findOne({ email });
+    const foundUsername = await User.findOne({ username });
+    if (foundEmail || foundUsername) {
+      let msg = foundEmail && foundUsername
+        ? "Email and username already exist"
+        : foundEmail
+          ? "Email already exists"
+          : "Username already exists";
+      return res.status(400).json({ errorMessage: msg });
+    }
+
+    // 2) (Optional) validate password strength
+    // if (!isValidPassword(password)) {
+    //   return res.status(400).json({ errorMessage: "Password does not meet criteria" });
+    // }
+
+    // 3) Hash the password
     const salt = bcryptjs.genSaltSync(10);
-    const hashedPassword = bcryptjs.hashSync(req.body.password, salt);
+    const hash = bcryptjs.hashSync(password, salt);
 
+    // 4) Create the user, using the provided image URL or default
     const newUser = await User.create({
-      ...req.body,
-      password: hashedPassword,
-      image: userImage,
+      username,
+      email,
+      password: hash,
+      ...(image && { image }),  // if image is truthy, include it
     });
-    res.status(201).json({ message: "Created new user" });
+
+    // 5) Remove sensitive fields before responding
+    const userRes = newUser.toObject();
+    delete userRes.password;
+    delete userRes.email;
+
+    res.status(201).json({ message: "User created", data: userRes });
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ errorMessage: error });
+    console.error("Error in signup:", error);
+    res.status(500).json({ errorMessage: error.message });
   }
 });
 
+// ─── LOGIN ─────────────────────────────────────────────────────────────────────
 router.post("/login", async (req, res) => {
   try {
-    const foundUser = await User.findOne({
-      username: req.body.username,
-    });
-    if (foundUser) {
-      const passwordMatch = bcryptjs.compareSync(
-        req.body.password,
-        foundUser.password
-      );
-      if (passwordMatch) {
-        const loggedInUser = {
-          _id: foundUser._id,
-          user: foundUser.username,
-          admin: foundUser.admin
-        };
-        const authToken = jwt.sign(loggedInUser, process.env.TOKEN_SECRET, {
-          algorithm: "HS256",
-          expiresIn: "6h",
-        });
-        res.status(200).json({ message: "Login successful", authToken });
-      } else {
-        res.status(500).json({ errorMessage: "Invalid credentials" });
-      }
+    const { username, password } = req.body;
+    const foundUser = await User.findOne({ username });
+    if (!foundUser) {
+      return res.status(401).json({ errorMessage: "Invalid credentials" });
     }
+
+    const isMatch = bcryptjs.compareSync(password, foundUser.password);
+    if (!isMatch) {
+      return res.status(401).json({ errorMessage: "Invalid credentials" });
+    }
+
+    const payload = {
+      _id:    foundUser._id,
+      user:   foundUser.username,
+      admin:  foundUser.admin,
+      image:  foundUser.image,
+    };
+
+    const token = jwt.sign(payload, process.env.TOKEN_SECRET, {
+      algorithm: "HS256",
+      expiresIn: "6h",
+    });
+
+    res.status(200).json({ message: "Login successful", authToken: token });
   } catch (error) {
-    console.log(error);
+    console.error("Error in login:", error);
+    res.status(500).json({ errorMessage: error.message });
   }
 });
 
+// ─── VERIFY ────────────────────────────────────────────────────────────────────
 router.get("/verify", isAuthenticated, (req, res) => {
-  if (req.payload) {
-    res
-      .status(200)
-      .json({ message: "Valid token", user: req.payload  });
-  } else {
-    res.status(401).json({ errorMessage: "Invalid token" });
-  }
+  res.status(200).json({ message: "Token valid", user: req.payload });
 });
 
 module.exports = router;

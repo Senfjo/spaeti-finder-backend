@@ -1,144 +1,165 @@
 // routes/spaetis.routes.js
-
 const router = require("express").Router();
 const Spaeti = require("../models/Spaeti.model");
 const uploader = require("../middleware/cloudinary.config");
 
 // ─── CREATE ────────────────────────────────────────────────────────────────────
-router.post("", uploader.single("image"), async (req, res) => {
-  try {
-    const {
-      name,
-      street,
-      zip,
-      city,
-      lat,
-      lng,
-      rating,
-      seats,
-      wc,
-      creator,
-      approved,
-      image,
-      sterni: incomingSterni  // still called "sterni" in the request
-    } = req.body;
+router.post(
+  "/",
+  // 1) Multer parses the incoming multipart/form-data
+  uploader.single("image"),
+  // 2) Your existing create‐Spaeti handler
+  async (req, res) => {
+    try {
+      const {
+        name,
+        street,
+        zip,
+        city,
+        lat,
+        lng,
+        rating,
+        seats,
+        wc,
+        creator,
+        approved,
+        sterni: incomingSterni,
+        image: incomingImageUrl,
+      } = req.body;
 
-    const price = parseFloat(incomingSterni) || 0;
+      const imageUrl = req.file
+        ? req.file.path
+        : incomingImageUrl || undefined;
 
-    const newSpaeti = await Spaeti.create({
-      name,
-      street,
-      zip,
-      city,
-      lat,
-      lng,
-      rating,
-      seats,
-      wc,
-      creator,
-      approved,
-      image,
-      // initialize the new fields
-      sterniHistory: [price],
-      sternAvg: price
-    });
+      const price = parseFloat(incomingSterni) || 0;
 
-    res.status(201).json({ message: "created spaeti", data: newSpaeti });
-  } catch (error) {
-    res.status(500).json(error);
+      console.log("Image URL:====>", imageUrl)
+      const newSpaeti = await Spaeti.create({
+        name,
+        street,
+        zip,
+        city,
+        lat,
+        lng,
+        rating,
+        seats,
+        wc,
+        creator,
+        approved,
+        image: imageUrl,
+        sterniHistory: [price],
+        sternAvg: price,
+      });
+
+      res.status(201).json({ message: "Created spaeti", data: newSpaeti });
+    } catch (error) {
+      console.error("❌ Error creating spaeti:", error);
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
+
 
 // ─── GET ALL ────────────────────────────────────────────────────────────────────
-router.get("", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const allSpaetis = await Spaeti.find()
       .lean()
-      .populate({ path: "rating" });
-    res.status(200).json({ message: "all spaetis", data: allSpaetis });
+      .populate("rating");
+    res.status(200).json({ message: "All spaetis", data: allSpaetis });
   } catch (error) {
-    res.status(500).json(error);
+    console.error("Error fetching spaetis:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
 // ─── GET ONE ────────────────────────────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
-  const { id } = req.params;
   try {
-    const findSpaeti = await Spaeti.findById(id).populate("rating");
-    res.status(200).json({ message: "found spaeti", data: findSpaeti });
+    const spaeti = await Spaeti.findById(req.params.id).populate("rating");
+    res.status(200).json({ message: "Found spaeti", data: spaeti });
   } catch (error) {
-    res.status(500).json(error);
+    console.error("Error fetching one spaeti:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
 // ─── GET RATINGS ────────────────────────────────────────────────────────────────
 router.get("/ratings/:id", async (req, res) => {
-  const { id } = req.params;
   try {
-    const findSpaeti = await Spaeti.findById(id)
+    const spaeti = await Spaeti.findById(req.params.id)
       .populate({
         path: "rating",
         populate: { path: "user" },
       })
       .lean();
 
-    findSpaeti.rating.forEach((rating) => {
-      delete rating.user.email;
-      delete rating.user.password;
+    spaeti.rating.forEach((r) => {
+      delete r.user.email;
+      delete r.user.password;
     });
 
-    res.status(200).json({ message: "found spaeti", rating: findSpaeti.rating });
+    res.status(200).json({ message: "Found ratings", rating: spaeti.rating });
   } catch (error) {
-    res.status(500).json({ errorMessage: "Failed fetching one spaeti" });
+    console.error("Error fetching ratings:", error);
+    res.status(500).json({ errorMessage: "Failed fetching ratings" });
   }
 });
 
 // ─── UPDATE ────────────────────────────────────────────────────────────────────
-router.patch("/update/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    // separate out any incoming sterni value
-    const { sterni: incomingSterni, ...otherFields } = req.body;
+router.patch(
+  "/update/:id",
+  uploader.single("image"),
+  async (req, res) => {
+    try {
+      const spa = await Spaeti.findById(req.params.id);
+      if (!spa) {
+        return res.status(404).json({ error: "Späti not found" });
+      }
 
-    if (incomingSterni !== undefined) {
-      // 1) load the document
-      const spa = await Spaeti.findById(id);
-      if (!spa) return res.status(404).json({ error: "Späti not found" });
+      // 1) if new image file was uploaded, update it
+      if (req.file) {
+        spa.image = req.file.path;
+      } else if (req.body.image) {
+        // or if someone passed a new URL
+        spa.image = req.body.image;
+      }
 
-      // 2) update the history & average
-      const price = parseFloat(incomingSterni) || 0;
-      spa.sterniHistory = spa.sterniHistory || [];
-      spa.sterniHistory.push(price);
-      const sum = spa.sterniHistory.reduce((a, b) => a + b, 0);
-      spa.sternAvg = +(sum / spa.sterniHistory.length).toFixed(2);
-      console.log("Updated sterni =>", spa.sternAvg)
+      // 2) handle price update, if provided
+      if (req.body.sterni !== undefined) {
+        const price = parseFloat(req.body.sterni) || 0;
+        spa.sterniHistory = spa.sterniHistory || [];
+        spa.sterniHistory.push(price);
+        const sum = spa.sterniHistory.reduce((a, b) => a + b, 0);
+        spa.sternAvg = +(sum / spa.sterniHistory.length).toFixed(2);
+      }
 
-      // 3) apply all other updates
+      // 3) apply all other fields (except image & sterni which we handled)
+      const {
+        sterni,  // exclude
+        image,   // exclude
+        ...otherFields
+      } = req.body;
       Object.assign(spa, otherFields);
 
+      // 4) save & respond
       const updated = await spa.save();
-      return res.status(200).json({ message: "updated spaeti", data: updated });
+      res.status(200).json({ message: "Updated spaeti", data: updated });
+    } catch (error) {
+      console.error("Error updating spaeti:", error);
+      res.status(500).json({ error: error.message });
     }
-
-    // no price change: update other fields directly
-    const updatedSpaeti = await Spaeti.findByIdAndUpdate(id, otherFields, {
-      new: true,
-    });
-    res.status(200).json({ message: "updated spaeti", data: updatedSpaeti });
-  } catch (error) {
-    res.status(500).json(error);
   }
-});
+);
 
 // ─── DELETE ────────────────────────────────────────────────────────────────────
 router.delete("/delete/:id", async (req, res) => {
-  const { id } = req.params;
   try {
-    const deleteSpaeti = await Spaeti.findByIdAndDelete(id);
-    res.status(200).json({ message: "deleted spaeti", data: deleteSpaeti });
+    const deleted = await Spaeti.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Deleted spaeti", data: deleted });
   } catch (error) {
-    res.status(500).json(error);
+    console.error("Error deleting spaeti:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

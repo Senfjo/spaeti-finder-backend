@@ -1,7 +1,10 @@
+// routes/user.routes.js
 const router = require("express").Router();
 const User = require("../models/User.model");
 const keysToDelete = ["password", "email"];
+const { isAuthenticated } = require("../middleware/jwt.middleware");
 
+// ─── CREATE ────────────────────────────────────────────────────────────────────
 router.post("", async (req, res) => {
   try {
     const createUser = await User.create(req.body);
@@ -16,6 +19,7 @@ router.post("", async (req, res) => {
   }
 });
 
+// ─── GET ALL ─────────────────────────────────────────────────────────────────────
 router.get("", async (req, res) => {
   try {
     const allUsers = await User.find().lean();
@@ -32,6 +36,7 @@ router.get("", async (req, res) => {
   }
 });
 
+// ─── GET ONE ─────────────────────────────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -47,6 +52,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// ─── UPDATE ──────────────────────────────────────────────────────────────────────
 router.put("/update/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -64,6 +70,7 @@ router.put("/update/:id", async (req, res) => {
   }
 });
 
+// ─── DELETE ──────────────────────────────────────────────────────────────────────
 router.delete("/delete/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -78,5 +85,62 @@ router.delete("/delete/:id", async (req, res) => {
     res.status(500).json(error);
   }
 });
+
+
+// ── NEUE ROUTE: Liste aller Favoriten (Spaeti-Dokumente) ────────────────────────
+router.get(
+  "/:id/favorites",
+  isAuthenticated,
+  async (req, res) => {
+    const { id } = req.params;
+    // nur eigener User darf seine Favoriten sehen
+    if (req.payload._id !== id) return res.sendStatus(403);
+    try {
+      // populate liefert volle Spaeti-Dokumente
+      const user = await User.findById(id).populate("favorites").lean();
+      res.status(200).json({ data: user.favorites });
+    } catch (error) {
+      res.status(500).json(error);
+    }
+  }
+);
+
+
+// ── NEUE ROUTE: Favorit an-/abbestellen via $addToSet / $pull ─────────────────────
+router.patch(
+  "/:id/favorite/:spaetiId",
+  isAuthenticated,
+  async (req, res) => {
+    const { id, spaetiId } = req.params;
+    // nur eigener User darf ändern
+    if (req.payload._id !== id) return res.sendStatus(403);
+
+    try {
+      // req.body.add: true = hinzufügen, false = entfernen
+      const op = req.body.add
+        ? { $addToSet: { favorites: spaetiId } }
+        : { $pull:     { favorites: spaetiId } };
+
+      const updatedUser = await User.findByIdAndUpdate(
+        id,
+        op,
+        { new: true }
+      ).lean();
+
+      // sensible Felder entfernen
+      if (updatedUser) {
+        keysToDelete.forEach((key) => {
+          delete updatedUser[key];
+        });
+      }
+
+      // nur das aktualisierte Array zurückgeben
+      res.status(200).json({ data: updatedUser.favorites });
+    } catch (error) {
+      res.status(500).json(error);
+    }
+  }
+);
+
 
 module.exports = router;
