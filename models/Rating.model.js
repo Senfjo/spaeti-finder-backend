@@ -9,9 +9,11 @@ const ratingSchema = new Schema({
   stars: {
     type: Number,
     enum: [1, 2, 3, 4, 5],
+    required: true
   },
   comment: {
     type: String,
+    default: ""
   },
   likes: {
     type: [Schema.Types.ObjectId],
@@ -24,7 +26,10 @@ const ratingSchema = new Schema({
   spaeti: {
     type: Schema.Types.ObjectId,
     ref: "Spaeti",
+    required: true
   },
+}, {
+  timestamps: true  // This adds createdAt and updatedAt automatically
 });
 
 const Rating = model("Rating", ratingSchema);
