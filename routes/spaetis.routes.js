@@ -1,7 +1,39 @@
 // routes/spaetis.routes.js
 const router = require("express").Router();
 const Spaeti = require("../models/Spaeti.model");
+const User = require("../models/User.model");
 const uploader = require("../middleware/cloudinary.config");
+
+// XP reward amounts
+const XP_REWARDS = {
+  CREATE_SPAETI_WITH_IMAGE: 50,
+  CREATE_SPAETI_WITHOUT_IMAGE: 40,
+};
+
+// Helper function to award XP to a user
+const awardXPToUser = async (userId, xpAmount, reason) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      console.error(`User not found for XP award: ${userId}`);
+      return null;
+    }
+
+    // Initialize XP if it doesn't exist
+    if (user.xp === undefined || user.xp === null) {
+      user.xp = 0;
+    }
+
+    user.xp += xpAmount;
+    await user.save();
+
+    console.log(`XP awarded: ${xpAmount} to user ${user.username} for: ${reason}`);
+    return { user, xpAwarded: xpAmount };
+  } catch (error) {
+    console.error("Error awarding XP:", error);
+    return null;
+  }
+};
 
 // ─── CREATE ────────────────────────────────────────────────────────────────────
 router.post(
@@ -59,7 +91,6 @@ router.post(
   }
 );
 
-
 // ─── GET ALL ────────────────────────────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
@@ -106,16 +137,19 @@ router.get("/ratings/:id", async (req, res) => {
   }
 });
 
-// ─── UPDATE ────────────────────────────────────────────────────────────────────
+// ─── UPDATE (WITH XP REWARDS FOR APPROVAL) ──────────────────────────────────────
 router.patch(
   "/update/:id",
   uploader.single("image"),
   async (req, res) => {
     try {
-      const spa = await Spaeti.findById(req.params.id);
+      const spa = await Spaeti.findById(req.params.id).populate('creator');
       if (!spa) {
         return res.status(404).json({ error: "Späti not found" });
       }
+
+      // Check if this is an approval (approved field is being set to true)
+      const isApproval = req.body.approved === true && !spa.approved;
 
       // 1) if new image file was uploaded, update it
       if (req.file) {
@@ -142,9 +176,39 @@ router.patch(
       } = req.body;
       Object.assign(spa, otherFields);
 
-      // 4) save & respond
+      // 4) save the updated Späti
       const updated = await spa.save();
-      res.status(200).json({ message: "Updated spaeti", data: updated });
+
+      let xpResult = null;
+
+      // 5) Award XP if this is an approval and creator exists
+      if (isApproval && spa.creator) {
+        const xpAmount = spa.image ? 
+          XP_REWARDS.CREATE_SPAETI_WITH_IMAGE : 
+          XP_REWARDS.CREATE_SPAETI_WITHOUT_IMAGE;
+        
+        const reason = spa.image ? 
+          "Späti with image approved" : 
+          "Späti without image approved";
+
+        xpResult = await awardXPToUser(spa.creator._id, xpAmount, reason);
+      }
+
+      // 6) respond with appropriate message
+      const message = isApproval && xpResult ? 
+        "Updated spaeti and XP awarded" : 
+        "Updated spaeti";
+
+      res.status(200).json({ 
+        message: message, 
+        data: updated,
+        xpAwarded: xpResult ? xpResult.xpAwarded : 0,
+        creator: xpResult ? { 
+          _id: xpResult.user._id, 
+          username: xpResult.user.username, 
+          newXP: xpResult.user.xp 
+        } : null
+      });
     } catch (error) {
       console.error("Error updating spaeti:", error);
       res.status(500).json({ error: error.message });
