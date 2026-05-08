@@ -239,4 +239,61 @@ router.delete("/delete/:id", async (req, res) => {
   }
 });
 
+// ─── ADD IMAGE (user uploads, needs approval) ──────────────────────────────────
+router.post(
+  "/:id/images",
+  isAuthenticated,
+  uploader.single("image"),
+  async (req, res) => {
+    try {
+      const spa = await Spaeti.findById(req.params.id);
+      if (!spa) return res.status(404).json({ error: "Späti not found" });
+      if (!req.file) return res.status(400).json({ error: "No image provided" });
+      const approvedCount = spa.images.filter(i => i.approved).length;
+      if (approvedCount >= 5) return res.status(400).json({ error: "Max 5 Bilder erreicht" });
+      spa.images.push({ url: req.file.path, approved: false, uploadedBy: req.payload._id });
+      await spa.save();
+      res.status(201).json({ message: "Image uploaded", data: spa });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ─── APPROVE IMAGE (admin only) ────────────────────────────────────────────────
+router.patch(
+  "/:id/images/:imageId/approve",
+  isAuthenticated,
+  async (req, res) => {
+    try {
+      const spa = await Spaeti.findById(req.params.id);
+      if (!spa) return res.status(404).json({ error: "Späti not found" });
+      const img = spa.images.id(req.params.imageId);
+      if (!img) return res.status(404).json({ error: "Image not found" });
+      img.approved = true;
+      await spa.save();
+      res.status(200).json({ message: "Image approved", data: spa });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ─── DELETE IMAGE (admin only) ─────────────────────────────────────────────────
+router.delete(
+  "/:id/images/:imageId",
+  isAuthenticated,
+  async (req, res) => {
+    try {
+      const spa = await Spaeti.findById(req.params.id);
+      if (!spa) return res.status(404).json({ error: "Späti not found" });
+      spa.images.pull({ _id: req.params.imageId });
+      await spa.save();
+      res.status(200).json({ message: "Image deleted", data: spa });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 module.exports = router;

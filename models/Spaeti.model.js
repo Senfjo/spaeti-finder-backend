@@ -30,6 +30,14 @@ const spaetiSchema = new Schema({
   // sterni: {
   //   type: Number,
   // },
+  images: {
+    type: [{
+      url: { type: String, required: true },
+      approved: { type: Boolean, default: false },
+      uploadedBy: { type: Schema.Types.ObjectId, ref: "User" }
+    }],
+    default: []
+  },
   sterniHistory: {
     type: [Number],
     default: []

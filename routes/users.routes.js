@@ -3,6 +3,7 @@ const router = require("express").Router();
 const User = require("../models/User.model");
 const keysToDelete = ["password", "email"];
 const { isAuthenticated } = require("../middleware/jwt.middleware");
+const uploader = require("../middleware/cloudinary.config");
 
 // ─── CREATE ────────────────────────────────────────────────────────────────────
 router.post("", async (req, res) => {
@@ -251,5 +252,27 @@ router.get("/:userId/xp", async (req, res) => {
     });
   }
 });
+
+// ─── UPLOAD PROFILE IMAGE ─────────────────────────────────────────────────────
+router.post(
+  "/:id/image",
+  isAuthenticated,
+  uploader.single("image"),
+  async (req, res) => {
+    try {
+      if (req.payload._id !== req.params.id) return res.sendStatus(403);
+      if (!req.file) return res.status(400).json({ error: "No image provided" });
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { image: req.file.path },
+        { new: true }
+      ).lean();
+      keysToDelete.forEach(k => delete user[k]);
+      res.status(200).json({ message: "Image updated", data: user });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
 
 module.exports = router;
