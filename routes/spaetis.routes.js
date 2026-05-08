@@ -3,6 +3,7 @@ const router = require("express").Router();
 const Spaeti = require("../models/Spaeti.model");
 const User = require("../models/User.model");
 const uploader = require("../middleware/cloudinary.config");
+const { isAuthenticated } = require("../middleware/jwt.middleware");
 
 // XP reward amounts
 const XP_REWARDS = {
@@ -63,7 +64,7 @@ router.post(
         ? req.file.path
         : incomingImageUrl || undefined;
 
-      const price = parseFloat(incomingSterni) || 0;
+      const price = incomingSterni ? parseFloat(incomingSterni) : null;
 
       console.log("Image URL:====>", imageUrl)
       const newSpaeti = await Spaeti.create({
@@ -79,8 +80,9 @@ router.post(
         creator,
         approved,
         image: imageUrl,
-        sterniHistory: [price],
-        sternAvg: price,
+        sterniHistory: price ? [price] : [],
+        sterniReporters: (price && creator) ? [{ user: creator, price }] : [],
+        sternAvg: price || 0,
       });
 
       res.status(201).json({ message: "Created spaeti", data: newSpaeti });
@@ -141,6 +143,7 @@ router.get("/ratings/:id", async (req, res) => {
 router.patch(
   "/update/:id",
   uploader.single("image"),
+  isAuthenticated,
   async (req, res) => {
     try {
       const spa = await Spaeti.findById(req.params.id).populate('creator');
@@ -159,13 +162,22 @@ router.patch(
         spa.image = req.body.image;
       }
 
-      // 2) handle price update, if provided
+      // 2) handle price update with per-user deduplication
       if (req.body.sterni !== undefined) {
-        const price = parseFloat(req.body.sterni) || 0;
-        spa.sterniHistory = spa.sterniHistory || [];
-        spa.sterniHistory.push(price);
-        const sum = spa.sterniHistory.reduce((a, b) => a + b, 0);
-        spa.sternAvg = +(sum / spa.sterniHistory.length).toFixed(2);
+        const price = parseFloat(req.body.sterni);
+        const userId = req.payload._id;
+        spa.sterniReporters = spa.sterniReporters || [];
+        const existingIdx = spa.sterniReporters.findIndex(
+          r => r.user.toString() === userId.toString()
+        );
+        if (existingIdx >= 0) {
+          spa.sterniReporters[existingIdx].price = price;
+        } else {
+          spa.sterniReporters.push({ user: userId, price });
+        }
+        const prices = spa.sterniReporters.map(r => r.price);
+        spa.sterniHistory = prices;
+        spa.sternAvg = +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
       }
 
       // 3) apply all other fields (except image & sterni which we handled)

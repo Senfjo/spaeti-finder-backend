@@ -30,9 +30,13 @@ const spaetiSchema = new Schema({
   // sterni: {
   //   type: Number,
   // },
-  sterniHistory: { 
-    type: [Number], 
-    default: [] 
+  sterniHistory: {
+    type: [Number],
+    default: []
+  },
+  sterniReporters: {
+    type: [{ user: { type: Schema.Types.ObjectId, ref: "User" }, price: Number }],
+    default: []
   },
   sternAvg: {
     type: Number,
