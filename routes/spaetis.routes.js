@@ -165,16 +165,17 @@ router.patch(
       // 2) handle price update with per-user deduplication
       if (req.body.sterni !== undefined) {
         const price = parseFloat(req.body.sterni);
-        const userId = req.payload._id;
-        spa.sterniReporters = spa.sterniReporters || [];
+        const userId = req.payload._id.toString();
+        if (!spa.sterniReporters) spa.sterniReporters = [];
         const existingIdx = spa.sterniReporters.findIndex(
-          r => r.user.toString() === userId.toString()
+          r => r.user.toString() === userId
         );
         if (existingIdx >= 0) {
           spa.sterniReporters[existingIdx].price = price;
         } else {
           spa.sterniReporters.push({ user: userId, price });
         }
+        spa.markModified('sterniReporters');
         const prices = spa.sterniReporters.map(r => r.price);
         spa.sterniHistory = prices;
         spa.sternAvg = +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);

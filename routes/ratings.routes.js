@@ -146,7 +146,7 @@ router.post("/", isAuthenticated, async (req, res, next) => {
     // Check if user has already rated this Späti
     const existingRating = await Rating.findOne({ user: finalUserId, spaeti: finalSpaetiId });
     if (existingRating) {
-      return res.status(400).json({ message: "You have already rated this Späti" });
+      return res.status(400).json({ message: "Du hast diesen Späti bereits bewertet." });
     }
 
     // Create the rating
