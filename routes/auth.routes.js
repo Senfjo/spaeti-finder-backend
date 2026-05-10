@@ -21,10 +21,10 @@ router.post("/signup", async (req, res) => {
     const foundUsername = await User.findOne({ username });
     if (foundEmail || foundUsername) {
       let msg = foundEmail && foundUsername
-        ? "Email and username already exist"
+        ? "E-Mail und Benutzername sind bereits vergeben."
         : foundEmail
-          ? "Email already exists"
-          : "Username already exists";
+          ? "Diese E-Mail-Adresse ist bereits registriert."
+          : "Dieser Benutzername ist bereits vergeben.";
       return res.status(400).json({ errorMessage: msg });
     }
 
