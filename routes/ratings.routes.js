@@ -341,11 +341,12 @@ router.get("/:ratingId", async (req, res) => {
 });
 
 // PUT /api/ratings/add-like/:id - Add like to a rating
-router.put("/add-like/:ratingId", async (req, res) => {
+router.put("/add-like/:ratingId", isAuthenticated, async (req, res) => {
   try {
     const { ratingId } = req.params;
-    const { user } = req.body;
-    
+    // Liker kommt aus dem Token, nicht aus dem Body (fälschungssicher).
+    const user = req.payload._id;
+
     const updatedRating = await Rating.findByIdAndUpdate(
       ratingId,
       { $addToSet: { likes: user } },
@@ -366,12 +367,13 @@ router.put("/add-like/:ratingId", async (req, res) => {
   }
 });
 
-// PUT /api/ratings/remove-like/:id - Remove like from a rating  
-router.put("/remove-like/:ratingId", async (req, res) => {
+// PUT /api/ratings/remove-like/:id - Remove like from a rating
+router.put("/remove-like/:ratingId", isAuthenticated, async (req, res) => {
   try {
     const { ratingId } = req.params;
-    const { user } = req.body;
-    
+    // Liker kommt aus dem Token, nicht aus dem Body (fälschungssicher).
+    const user = req.payload._id;
+
     const updatedRating = await Rating.findByIdAndUpdate(
       ratingId,
       { $pull: { likes: user } },
