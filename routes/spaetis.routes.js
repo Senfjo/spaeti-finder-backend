@@ -3,7 +3,7 @@ const router = require("express").Router();
 const Spaeti = require("../models/Spaeti.model");
 const User = require("../models/User.model");
 const uploader = require("../middleware/cloudinary.config");
-const { isAuthenticated } = require("../middleware/jwt.middleware");
+const { isAuthenticated, isAdmin } = require("../middleware/jwt.middleware");
 
 // XP reward amounts
 const XP_REWARDS = {
@@ -265,6 +265,7 @@ router.post(
 router.patch(
   "/:id/images/:imageId/approve",
   isAuthenticated,
+  isAdmin,
   async (req, res) => {
     try {
       const spa = await Spaeti.findById(req.params.id);
@@ -284,6 +285,7 @@ router.patch(
 router.delete(
   "/:id/images/:imageId",
   isAuthenticated,
+  isAdmin,
   async (req, res) => {
     try {
       const spa = await Spaeti.findById(req.params.id);

@@ -307,8 +307,9 @@ router.get("/:id/friend-requests", isAuthenticated, async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json({
       data: {
-        received: user.friendRequestsReceived,
-        sent: user.friendRequestsSent,
+        // Legacy-Dokumente haben diese Felder evtl. nicht – immer Arrays liefern.
+        received: user.friendRequestsReceived || [],
+        sent: user.friendRequestsSent || [],
       },
     });
   } catch (error) {
