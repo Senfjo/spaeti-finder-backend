@@ -4,40 +4,7 @@ const Rating = require("../models/Rating.model");
 const User = require("../models/User.model");
 const Spaeti = require("../models/Spaeti.model");
 const { isAuthenticated } = require("../middleware/jwt.middleware");
-
-// Helper function to award XP to a user
-async function awardXPToUser(userId, xpAmount) {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      return { success: false, message: "User not found" };
-    }
-
-    // Initialize XP if it doesn't exist
-    if (typeof user.xp !== 'number') {
-      user.xp = 0;
-    }
-
-    // Award XP
-    user.xp += xpAmount;
-    await user.save();
-
-    // Calculate level (every 100 XP = 1 level)
-    const level = Math.floor(user.xp / 100) + 1;
-    const xpToNextLevel = 100 - (user.xp % 100);
-
-    return {
-      success: true,
-      xp: user.xp,
-      level,
-      xpToNextLevel,
-      xpAwarded: xpAmount
-    };
-  } catch (error) {
-    console.error("Error awarding XP:", error);
-    return { success: false, message: "Error awarding XP" };
-  }
-}
+const { awardXP, XP } = require("../services/xp.service");
 
 // GET /api/ratings - Get all ratings
 router.get("/", async (req, res, next) => {
@@ -159,8 +126,8 @@ router.post("/", isAuthenticated, async (req, res, next) => {
 
     const savedRating = await newRating.save();
 
-    // Award 10 XP for creating a rating
-    const xpResult = await awardXPToUser(finalUserId, 10);
+    // Award XP for creating a rating
+    const xpResult = await awardXP(finalUserId, XP.RATING_CREATED);
 
     // Update the User model to include this rating (for compatibility with existing structure)
     try {
@@ -189,25 +156,11 @@ router.post("/", isAuthenticated, async (req, res, next) => {
       .populate("user", "username")
       .populate("spaeti", "name");
 
-    // Update Späti's average rating
-    const allRatings = await Rating.find({ spaeti: finalSpaetiId });
-    const totalRating = allRatings.reduce((sum, r) => sum + (r.stars || 0), 0);
-    const averageRating = totalRating / allRatings.length;
-
-    await Spaeti.findByIdAndUpdate(finalSpaetiId, { 
-      averageRating: Math.round(averageRating * 10) / 10 // Round to 1 decimal place
-    });
-
     res.status(201).json({
       message: "Rating created successfully",
       data: populatedRating, // Match your existing API format
       rating: populatedRating,
-      xp: xpResult.success ? {
-        awarded: xpResult.xpAwarded,
-        total: xpResult.xp,
-        level: xpResult.level,
-        xpToNextLevel: xpResult.xpToNextLevel
-      } : null
+      xp: xpResult
     });
   } catch (error) {
     console.error("Error creating rating:", error);
@@ -253,17 +206,6 @@ router.put("/:ratingId", isAuthenticated, async (req, res, next) => {
       { new: true }
     ).populate("user", "username").populate("spaeti", "name");
 
-    // Update Späti's average rating if rating value changed
-    if (finalStars !== undefined) {
-      const allRatings = await Rating.find({ spaeti: existingRating.spaeti });
-      const totalRating = allRatings.reduce((sum, r) => sum + (r.stars || 0), 0);
-      const averageRating = totalRating / allRatings.length;
-
-      await Spaeti.findByIdAndUpdate(existingRating.spaeti, { 
-        averageRating: Math.round(averageRating * 10) / 10
-      });
-    }
-
     res.json({
       message: "Rating updated successfully",
       rating: updatedRating,
@@ -276,6 +218,12 @@ router.put("/:ratingId", isAuthenticated, async (req, res, next) => {
 });
 
 // DELETE /api/ratings/:ratingId - Delete a rating
+// Reverses the XP awarded on creation (clamped at 0) and pulls the rating's
+// id out of User.ratings and Spaeti.rating so no dangling refs remain. This,
+// combined with the "already rated" guard in POST /, closes the
+// rate -> delete -> re-rate XP farm loop: a user can never hold more XP from
+// a given Späti's rating than the single RATING_CREATED award, since delete
+// always gives it back before the "already rated" check can be bypassed.
 router.delete("/:ratingId", isAuthenticated, async (req, res, next) => {
   try {
     const { ratingId } = req.params;
@@ -288,30 +236,34 @@ router.delete("/:ratingId", isAuthenticated, async (req, res, next) => {
     }
 
     // Check if the user owns this rating or is an admin
-    const user = await User.findById(userId);
-    if (rating.user.toString() !== userId && user.role !== 'admin') {
+    const caller = await User.findById(userId);
+    if (!caller) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (rating.user.toString() !== userId && !caller.admin) {
       return res.status(403).json({ message: "You can only delete your own ratings" });
     }
-
-    const spaetiId = rating.spaeti;
 
     // Delete the rating
     await Rating.findByIdAndDelete(ratingId);
 
-    // Update Späti's average rating
-    const remainingRatings = await Rating.find({ spaeti: spaetiId });
-    if (remainingRatings.length > 0) {
-      const totalRating = remainingRatings.reduce((sum, r) => sum + (r.stars || 0), 0);
-      const averageRating = totalRating / remainingRatings.length;
-      await Spaeti.findByIdAndUpdate(spaetiId, { 
-        averageRating: Math.round(averageRating * 10) / 10
+    // Reverse the XP awarded for creating this rating (clamped so it never
+    // goes below 0), and pull the now-deleted rating's id out of
+    // User.ratings in the same update.
+    try {
+      const ratingOwner = await User.findById(rating.user).select("xp");
+      const currentXP = ratingOwner ? ratingOwner.xp || 0 : 0;
+      const newXP = Math.max(0, currentXP - XP.RATING_CREATED);
+      await User.findByIdAndUpdate(rating.user, {
+        xp: newXP,
+        $pull: { ratings: ratingId }
       });
-    } else {
-      // No ratings left, remove averageRating
-      await Spaeti.findByIdAndUpdate(spaetiId, { 
-        $unset: { averageRating: 1 }
-      });
+    } catch (xpError) {
+      console.warn("Could not reverse XP on rating delete:", xpError);
     }
+
+    // Remove the now-deleted rating's id from the Späti's rating array too.
+    await Spaeti.findByIdAndUpdate(rating.spaeti, { $pull: { rating: ratingId } });
 
     res.json({ message: "Rating deleted successfully" });
   } catch (error) {
@@ -357,9 +309,9 @@ router.put("/add-like/:ratingId", isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: "Rating not found" });
     }
     
-    res.status(201).json({ 
-      message: "Successfully updated", 
-      addLike: updatedRating 
+    res.status(200).json({
+      message: "Successfully updated",
+      addLike: updatedRating
     });
   } catch (error) {
     console.error("Error adding like:", error);
@@ -384,117 +336,13 @@ router.put("/remove-like/:ratingId", isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: "Rating not found" });
     }
     
-    res.status(201).json({ 
-      message: "Successfully updated", 
-      removeLike: updatedRating 
+    res.status(200).json({
+      message: "Successfully updated",
+      removeLike: updatedRating
     });
   } catch (error) {
     console.error("Error removing like:", error);
     res.status(500).json({ message: "Error removing like" });
-  }
-});
-
-// Legacy routes for backward compatibility
-router.delete("/delete/:ratingId", isAuthenticated, async (req, res) => {
-  try {
-    const { ratingId } = req.params;
-    const userId = req.payload._id;
-
-    // Find the rating
-    const rating = await Rating.findById(ratingId);
-    if (!rating) {
-      return res.status(404).json({ message: "Rating not found" });
-    }
-
-    // Check if the user owns this rating or is an admin
-    const user = await User.findById(userId);
-    if (rating.user.toString() !== userId && user.role !== 'admin') {
-      return res.status(403).json({ message: "You can only delete your own ratings" });
-    }
-
-    const spaetiId = rating.spaeti;
-
-    // Delete the rating
-    await Rating.findByIdAndDelete(ratingId);
-
-    // Update Späti's average rating
-    const remainingRatings = await Rating.find({ spaeti: spaetiId });
-    if (remainingRatings.length > 0) {
-      const totalRating = remainingRatings.reduce((sum, r) => sum + (r.stars || 0), 0);
-      const averageRating = totalRating / remainingRatings.length;
-      await Spaeti.findByIdAndUpdate(spaetiId, { 
-        averageRating: Math.round(averageRating * 10) / 10
-      });
-    } else {
-      // No ratings left, remove averageRating
-      await Spaeti.findByIdAndUpdate(spaetiId, { 
-        $unset: { averageRating: 1 }
-      });
-    }
-
-    res.json({ message: "Rating deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting rating:", error);
-    res.status(500).json({ message: "Error deleting rating" });
-  }
-});
-
-router.put("/update/:ratingId", isAuthenticated, async (req, res) => {
-  try {
-    const { ratingId } = req.params;
-    const { stars, rating, comment } = req.body;
-    const userId = req.payload._id;
-
-    // Use 'stars' field (accept 'rating' for backward compatibility)
-    const finalStars = stars || rating;
-
-    // Find the existing rating
-    const existingRating = await Rating.findById(ratingId);
-    if (!existingRating) {
-      return res.status(404).json({ message: "Rating not found" });
-    }
-
-    // Check if the user owns this rating
-    if (existingRating.user.toString() !== userId) {
-      return res.status(403).json({ message: "You can only update your own ratings" });
-    }
-
-    // Validate rating value
-    if (finalStars && (finalStars < 1 || finalStars > 5)) {
-      return res.status(400).json({ message: "Stars must be between 1 and 5" });
-    }
-
-    // Update the rating
-    const updateData = {};
-    if (finalStars !== undefined) updateData.stars = finalStars;
-    if (comment !== undefined) updateData.comment = comment;
-    updateData.updatedAt = new Date();
-
-    const updatedRating = await Rating.findByIdAndUpdate(
-      ratingId,
-      updateData,
-      { new: true }
-    ).populate("user", "username").populate("spaeti", "name");
-
-    // Update Späti's average rating if rating value changed
-    if (finalStars !== undefined) {
-      const allRatings = await Rating.find({ spaeti: existingRating.spaeti });
-      const totalRating = allRatings.reduce((sum, r) => sum + (r.stars || 0), 0);
-      const averageRating = totalRating / remainingRatings.length;
-
-      await Spaeti.findByIdAndUpdate(existingRating.spaeti, { 
-        averageRating: Math.round(averageRating * 10) / 10
-      });
-    }
-
-    res.json({
-      message: "Rating updated successfully",
-      rating: updatedRating,
-      data: updatedRating // Add data field for compatibility
-    });
-  } catch (error) {
-    console.error("Error updating rating:", error);
-    res.status(500).json({ message: "Error updating rating" });
   }
 });
 

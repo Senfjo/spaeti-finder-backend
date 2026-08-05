@@ -3,48 +3,21 @@
 const router = require("express").Router();
 const Ticket = require("../models/Ticket.model");
 const Spaeti = require("../models/Spaeti.model");
-const User = require("../models/User.model");
 const { isAuthenticated, isAdmin } = require("../middleware/jwt.middleware");
 const uploader = require("../middleware/cloudinary.config"); // Use same config as spaetis
-
-// XP reward amounts
-const XP_REWARDS = {
-  UPDATE_SPAETI: 30,
-};
-
-// Helper function to award XP to a user
-const awardXPToUser = async (userId, xpAmount, reason) => {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      console.error(`User not found for XP award: ${userId}`);
-      return null;
-    }
-
-    // Initialize XP if it doesn't exist
-    if (user.xp === undefined || user.xp === null) {
-      user.xp = 0;
-    }
-
-    user.xp += xpAmount;
-    await user.save();
-
-    console.log(`XP awarded: ${xpAmount} to user ${user.username} for: ${reason}`);
-    return { user, xpAwarded: xpAmount };
-  } catch (error) {
-    console.error("Error awarding XP:", error);
-    return null;
-  }
-};
+const { awardXP, XP } = require("../services/xp.service");
 
 // ─── Create a new ticket ───────────────────────────────────────────────────────
 router.post("/", isAuthenticated, uploader.single("image"), async (req, res) => {
   try {
-    const { spaetiId, changes, userId } = req.body;
-    
+    const { spaetiId, changes } = req.body;
+    // userId comes from the verified JWT, never from the request body
+    // (spoofable — a client could otherwise submit tickets as any user).
+    const userId = req.payload._id;
+
     // Parse changes if it's a string (from FormData)
     const parsedChanges = typeof changes === 'string' ? JSON.parse(changes) : changes;
-    
+
     // Add image URL to changes if uploaded via Cloudinary
     if (req.file) {
       parsedChanges.image = req.file.path; // Cloudinary URL
@@ -64,7 +37,7 @@ router.post("/", isAuthenticated, uploader.single("image"), async (req, res) => 
 });
 
 // ─── List pending tickets ───────────────────────────────────────────────────────
-router.get("/", isAdmin, async (req, res) => {
+router.get("/", isAuthenticated, isAdmin, async (req, res) => {
   try {
     const tickets = await Ticket.find({ status: "pending" })
       .populate("userId spaetiId")
@@ -86,7 +59,7 @@ router.get("/", isAdmin, async (req, res) => {
 });
 
 // ─── Approve a ticket (UPDATED WITH XP REWARDS) ──────────────────────────────────
-router.post("/:id/approve", isAdmin, async (req, res) => {
+router.post("/:id/approve", isAuthenticated, isAdmin, async (req, res) => {
   try {
     const ticket = await Ticket.findById(req.params.id).populate('userId');
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
@@ -149,11 +122,7 @@ router.post("/:id/approve", isAdmin, async (req, res) => {
     // 4) Award XP to the user who submitted the change request
     let xpResult = null;
     if (ticket.userId) {
-      xpResult = await awardXPToUser(
-        ticket.userId._id, 
-        XP_REWARDS.UPDATE_SPAETI, 
-        "Change request approved"
-      );
+      xpResult = await awardXP(ticket.userId._id, XP.TICKET_APPROVED);
     }
 
     // 5) Mark ticket as approved
@@ -161,14 +130,14 @@ router.post("/:id/approve", isAdmin, async (req, res) => {
 
     console.log("Späti updated successfully:", updatedSpaeti);
 
-    res.status(200).json({ 
-      message: "Ticket approved and Späti updated" + (xpResult ? " and XP awarded" : ""), 
+    res.status(200).json({
+      message: "Ticket approved and Späti updated" + (xpResult ? " and XP awarded" : ""),
       data: updatedSpaeti,
-      xpAwarded: xpResult ? xpResult.xpAwarded : 0,
-      user: xpResult ? { 
-        _id: xpResult.user._id, 
-        username: xpResult.user.username, 
-        newXP: xpResult.user.xp 
+      xpAwarded: xpResult ? xpResult.awarded : 0,
+      user: xpResult ? {
+        _id: ticket.userId._id,
+        username: ticket.userId.username,
+        newXP: xpResult.totalXP
       } : null
     });
   } catch (error) {
@@ -178,7 +147,7 @@ router.post("/:id/approve", isAdmin, async (req, res) => {
 });
 
 // ─── Reject a ticket ───────────────────────────────────────────────────────────
-router.post("/:id/reject", isAdmin, async (req, res) => {
+router.post("/:id/reject", isAuthenticated, isAdmin, async (req, res) => {
   try {
     const ticket = await Ticket.findById(req.params.id);
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });

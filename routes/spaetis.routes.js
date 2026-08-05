@@ -4,44 +4,23 @@ const Spaeti = require("../models/Spaeti.model");
 const User = require("../models/User.model");
 const uploader = require("../middleware/cloudinary.config");
 const { isAuthenticated, isAdmin } = require("../middleware/jwt.middleware");
+const { awardXP, XP } = require("../services/xp.service");
 
-// XP reward amounts
-const XP_REWARDS = {
-  CREATE_SPAETI_WITH_IMAGE: 50,
-  CREATE_SPAETI_WITHOUT_IMAGE: 40,
-};
-
-// Helper function to award XP to a user
-const awardXPToUser = async (userId, xpAmount, reason) => {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      console.error(`User not found for XP award: ${userId}`);
-      return null;
-    }
-
-    // Initialize XP if it doesn't exist
-    if (user.xp === undefined || user.xp === null) {
-      user.xp = 0;
-    }
-
-    user.xp += xpAmount;
-    await user.save();
-
-    console.log(`XP awarded: ${xpAmount} to user ${user.username} for: ${reason}`);
-    return { user, xpAwarded: xpAmount };
-  } catch (error) {
-    console.error("Error awarding XP:", error);
-    return null;
-  }
-};
+// Fields a non-creator caller is allowed to change via PATCH /update/:id.
+// Deliberately excludes: creator, approved (admin-gated, see below), images,
+// rating, sterniHistory/sterniReporters/sternAvg (handled by the sterni block).
+const ALLOWED_UPDATE_FIELDS = [
+  "name", "street", "zip", "city", "lat", "lng", "seats", "wc", "atm", "card",
+];
 
 // ─── CREATE ────────────────────────────────────────────────────────────────────
 router.post(
   "/",
-  // 1) Multer parses the incoming multipart/form-data
+  // 1) Must be logged in before we touch Cloudinary or the DB
+  isAuthenticated,
+  // 2) Multer parses the incoming multipart/form-data (no-op for JSON bodies)
   uploader.single("image"),
-  // 2) Your existing create‐Spaeti handler
+  // 3) Your existing create‐Spaeti handler
   async (req, res) => {
     try {
       const {
@@ -54,11 +33,14 @@ router.post(
         rating,
         seats,
         wc,
-        creator,
-        approved,
         sterni: incomingSterni,
         image: incomingImageUrl,
       } = req.body;
+
+      // creator/approved are never trusted from the client:
+      // creator is always the authenticated caller, approved always starts false.
+      const creator = req.payload._id;
+      const approved = false;
 
       const imageUrl = req.file
         ? req.file.path
@@ -142,8 +124,9 @@ router.get("/ratings/:id", async (req, res) => {
 // ─── UPDATE (WITH XP REWARDS FOR APPROVAL) ──────────────────────────────────────
 router.patch(
   "/update/:id",
-  uploader.single("image"),
+  // Auth must run before multer ever touches Cloudinary.
   isAuthenticated,
+  uploader.single("image"),
   async (req, res) => {
     try {
       const spa = await Spaeti.findById(req.params.id).populate('creator');
@@ -151,8 +134,25 @@ router.patch(
         return res.status(404).json({ error: "Späti not found" });
       }
 
-      // Check if this is an approval (approved field is being set to true)
-      const isApproval = req.body.approved === true && !spa.approved;
+      // 0) "approved" is field-gated: only an admin may change it. Any other
+      // authenticated user (e.g. reporting a sterni price) has it silently
+      // stripped rather than being 403'd for the whole request.
+      let approvedRequested = req.body.approved;
+      if (approvedRequested !== undefined) {
+        const caller = await User.findById(req.payload._id).select("admin").lean();
+        const callerIsAdmin = !!(caller && caller.admin === true);
+        if (!callerIsAdmin) {
+          approvedRequested = undefined;
+        }
+      }
+
+      // Coerce "true"/"false" strings (multipart form fields arrive as strings).
+      if (approvedRequested !== undefined && typeof approvedRequested === "string") {
+        approvedRequested = approvedRequested === "true";
+      }
+
+      // Check if this is an approval (approved field is being set true->false transition)
+      const isApproval = approvedRequested === true && !spa.approved;
 
       // 1) if new image file was uploaded, update it
       if (req.file) {
@@ -181,45 +181,47 @@ router.patch(
         spa.sternAvg = +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
       }
 
-      // 3) apply all other fields (except image & sterni which we handled)
-      const {
-        sterni,  // exclude
-        image,   // exclude
-        ...otherFields
-      } = req.body;
-      Object.assign(spa, otherFields);
+      // 3) apply only whitelisted fields (creator/approved/images/rating/sterni*
+      // are never mass-assignable; approved is handled separately below)
+      for (const key of ALLOWED_UPDATE_FIELDS) {
+        if (req.body[key] !== undefined) {
+          spa[key] = req.body[key];
+        }
+      }
+
+      // 3b) apply the admin-gated approved change, if any
+      if (approvedRequested !== undefined) {
+        spa.approved = approvedRequested;
+      }
 
       // 4) save the updated Späti
       const updated = await spa.save();
 
       let xpResult = null;
 
-      // 5) Award XP if this is an approval and creator exists
+      // 5) Award XP if this is an approval and creator exists (always credited
+      // to the spaeti's creator, never the caller who triggered the approval)
       if (isApproval && spa.creator) {
-        const xpAmount = spa.image ? 
-          XP_REWARDS.CREATE_SPAETI_WITH_IMAGE : 
-          XP_REWARDS.CREATE_SPAETI_WITHOUT_IMAGE;
-        
-        const reason = spa.image ? 
-          "Späti with image approved" : 
-          "Späti without image approved";
+        const xpAmount = spa.image
+          ? XP.SPAETI_WITH_PHOTO_APPROVED
+          : XP.SPAETI_APPROVED;
 
-        xpResult = await awardXPToUser(spa.creator._id, xpAmount, reason);
+        xpResult = await awardXP(spa.creator._id, xpAmount);
       }
 
       // 6) respond with appropriate message
-      const message = isApproval && xpResult ? 
-        "Updated spaeti and XP awarded" : 
+      const message = isApproval && xpResult ?
+        "Updated spaeti and XP awarded" :
         "Updated spaeti";
 
-      res.status(200).json({ 
-        message: message, 
+      res.status(200).json({
+        message: message,
         data: updated,
-        xpAwarded: xpResult ? xpResult.xpAwarded : 0,
-        creator: xpResult ? { 
-          _id: xpResult.user._id, 
-          username: xpResult.user.username, 
-          newXP: xpResult.user.xp 
+        xpAwarded: xpResult ? xpResult.awarded : 0,
+        creator: xpResult ? {
+          _id: spa.creator._id,
+          username: spa.creator.username,
+          newXP: xpResult.totalXP
         } : null
       });
     } catch (error) {
@@ -230,7 +232,7 @@ router.patch(
 );
 
 // ─── DELETE ────────────────────────────────────────────────────────────────────
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", isAuthenticated, isAdmin, async (req, res) => {
   try {
     const deleted = await Spaeti.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Deleted spaeti", data: deleted });

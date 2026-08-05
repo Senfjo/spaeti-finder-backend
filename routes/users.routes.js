@@ -4,24 +4,23 @@ const User = require("../models/User.model");
 const keysToDelete = ["password", "email"];
 const { isAuthenticated } = require("../middleware/jwt.middleware");
 const uploader = require("../middleware/cloudinary.config");
+const { levelFor } = require("../services/xp.service");
 
-// ─── CREATE ────────────────────────────────────────────────────────────────────
-router.post("", async (req, res) => {
+// Shared helper: caller may act on `targetId` if it's their own account, or
+// if the caller (looked up fresh from the DB, not trusted from the JWT) is
+// an admin. Returns true/false; never throws (treat lookup errors as "no").
+async function isSelfOrAdmin(req, targetId) {
+  if (req.payload._id === targetId) return true;
   try {
-    const createUser = await User.create(req.body);
-    if (createUser) {
-      keysToDelete.forEach((key) => {
-        delete createUser[key];
-      });
-    }
-    res.status(201).json({ message: "created user", data: createUser });
+    const caller = await User.findById(req.payload._id).select("admin").lean();
+    return !!(caller && caller.admin === true);
   } catch (error) {
-    res.status(500).json(error);
+    return false;
   }
-});
+}
 
 // ─── GET ALL ─────────────────────────────────────────────────────────────────────
-router.get("", async (req, res) => {
+router.get("", isAuthenticated, async (req, res) => {
   try {
     const allUsers = await User.find().lean();
     if (allUsers) {
@@ -80,10 +79,19 @@ router.get("/:id", async (req, res) => {
 });
 
 // ─── UPDATE ──────────────────────────────────────────────────────────────────────
-router.put("/update/:id", async (req, res) => {
+router.put("/update/:id", isAuthenticated, async (req, res) => {
   const { id } = req.params;
   try {
-    const updateUser = await User.findByIdAndUpdate(id, req.body, {
+    if (!(await isSelfOrAdmin(req, id))) return res.sendStatus(403);
+
+    // Whitelist: never let the client set admin/xp/password/friends/etc.
+    // via this route, no matter what the body contains.
+    const allowedUpdate = {};
+    if (req.body.image !== undefined) allowedUpdate.image = req.body.image;
+    if (req.body.username !== undefined) allowedUpdate.username = req.body.username;
+    if (req.body.email !== undefined) allowedUpdate.email = req.body.email;
+
+    const updateUser = await User.findByIdAndUpdate(id, allowedUpdate, {
       new: true,
     }).lean();
     if (updateUser) {
@@ -98,9 +106,11 @@ router.put("/update/:id", async (req, res) => {
 });
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────────
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", isAuthenticated, async (req, res) => {
   const { id } = req.params;
   try {
+    if (!(await isSelfOrAdmin(req, id))) return res.sendStatus(403);
+
     const deleteUser = await User.findByIdAndDelete(id).lean();
     if (deleteUser) {
       keysToDelete.forEach((key) => {
@@ -168,103 +178,38 @@ router.patch(
 );
 
 // ── XP MANAGEMENT ROUTES ─────────────────────────────────────────────────────────
+// NOTE: the old PATCH /:userId/xp "add arbitrary XP" endpoint was removed —
+// it let any authenticated user grant themselves XP directly. XP is now only
+// ever awarded server-side via services/xp.service.js (awardXP), from the
+// routes that actually earn it (ratings, spaeti approval, ticket approval).
 
-// Route to update user XP
-router.patch("/:userId/xp", isAuthenticated, async (req, res) => {
+// Route to get user's XP and level information (read-only — no write-on-read)
+router.get("/:userId/xp", isAuthenticated, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { xpToAdd, reason } = req.body;
 
-    // Verify the requesting user is the same user or an admin
-    if (req.payload._id !== userId && !req.payload.admin) {
-      return res.status(403).json({ 
-        message: "Not authorized to update this user's XP" 
-      });
-    }
-
-    // Validate XP amount
-    if (typeof xpToAdd !== 'number' || isNaN(xpToAdd)) {
-      return res.status(400).json({ 
-        message: "Invalid XP amount provided" 
-      });
-    }
-
-    // Find the user and update XP
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("xp username").lean();
     if (!user) {
-      return res.status(404).json({ 
-        message: "User not found" 
+      return res.status(404).json({
+        message: "User not found"
       });
     }
 
-    // Initialize XP if it doesn't exist
-    if (user.xp === undefined || user.xp === null) {
-      user.xp = 0;
-    }
-
-    // Store previous XP for response
-    const previousXP = user.xp;
-
-    // Add XP (ensure it doesn't go below 0)
-    user.xp = Math.max(0, user.xp + xpToAdd);
-
-    await user.save();
-
-    console.log(`XP awarded: ${xpToAdd} to user ${user.username} (${userId}) for: ${reason}`);
-
-    res.status(200).json({
-      message: "XP updated successfully",
-      data: {
-        user: {
-          _id: user._id,
-          username: user.username,
-          previousXP: previousXP,
-          newXP: user.xp
-        },
-        xpAdded: xpToAdd,
-        reason: reason || "XP award"
-      }
-    });
-
-  } catch (error) {
-    console.error("Error updating user XP:", error);
-    res.status(500).json({ 
-      message: "Server error updating XP",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// Route to get user's XP and level information
-router.get("/:userId/xp", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    const user = await User.findById(userId).select('xp username');
-    if (!user) {
-      return res.status(404).json({ 
-        message: "User not found" 
-      });
-    }
-
-    // Initialize XP if it doesn't exist
-    if (user.xp === undefined || user.xp === null) {
-      user.xp = 0;
-      await user.save();
-    }
+    const xp = user.xp || 0;
 
     res.status(200).json({
       message: "XP information retrieved successfully",
       data: {
         userId: user._id,
         username: user.username,
-        xp: user.xp
+        xp,
+        level: levelFor(xp)
       }
     });
 
   } catch (error) {
     console.error("Error fetching user XP:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Server error fetching XP",
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
