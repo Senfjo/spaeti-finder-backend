@@ -304,14 +304,37 @@ router.put("/add-like/:ratingId", isAuthenticated, async (req, res) => {
       { $addToSet: { likes: user } },
       { new: true }
     );
-    
+
     if (!updatedRating) {
       return res.status(404).json({ message: "Rating not found" });
     }
-    
+
+    // Like-milestone XP: paid once per threshold to the rating's author (not
+    // the liker), never revoked on unlike (anti-oscillation-farming). The
+    // findOneAndUpdate filter (likeMilestonesAwarded not already containing
+    // the threshold) means only one concurrent request can win the
+    // $addToSet push, so only that request awards XP even under a race.
+    const LIKE_MILESTONES = [5, 10, 25];
+    let xpAwardedToOwner = false;
+    for (const threshold of LIKE_MILESTONES) {
+      if (updatedRating.likes.length < threshold) continue;
+      if (updatedRating.likeMilestonesAwarded.includes(threshold)) continue;
+
+      const milestoneWon = await Rating.findOneAndUpdate(
+        { _id: ratingId, likeMilestonesAwarded: { $ne: threshold } },
+        { $addToSet: { likeMilestonesAwarded: threshold } },
+        { new: true }
+      );
+      if (milestoneWon) {
+        await awardXP(updatedRating.user, XP.LIKE_MILESTONE);
+        xpAwardedToOwner = true;
+      }
+    }
+
     res.status(200).json({
       message: "Successfully updated",
-      addLike: updatedRating
+      addLike: updatedRating,
+      xpAwardedToOwner
     });
   } catch (error) {
     console.error("Error adding like:", error);

@@ -19,6 +19,13 @@ const ratingSchema = new Schema({
     type: [Schema.Types.ObjectId],
     ref: "User",
   },
+  // Like-count thresholds (see xp.service LIKE_MILESTONE) already paid out
+  // for this rating, so PUT /add-like never double-awards. Never cleared on
+  // unlike — milestone XP is a one-time achievement, not reversible.
+  likeMilestonesAwarded: {
+    type: [Number],
+    default: [],
+  },
   date: {
     type: Date,
     default: Date.now,

@@ -274,9 +274,26 @@ router.patch(
       if (!spa) return res.status(404).json({ error: "Späti not found" });
       const img = spa.images.id(req.params.imageId);
       if (!img) return res.status(404).json({ error: "Image not found" });
+
+      // Only award XP on the false -> true transition, so re-approving an
+      // already-approved image (or approving twice) never double-pays.
+      const isNewApproval = !img.approved;
       img.approved = true;
       await spa.save();
-      res.status(200).json({ message: "Image approved", data: spa });
+
+      // Credited to the uploader, never the admin who approved it — legacy
+      // images without an uploadedBy (pre-dating that field) are skipped.
+      let xpAwardedToOwner = false;
+      if (isNewApproval && img.uploadedBy) {
+        const xpResult = await awardXP(img.uploadedBy, XP.PHOTO_APPROVED);
+        xpAwardedToOwner = !!xpResult;
+      }
+
+      res.status(200).json({
+        message: "Image approved",
+        data: spa,
+        xpAwardedToOwner,
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
